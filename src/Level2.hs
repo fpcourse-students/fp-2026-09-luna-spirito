@@ -35,7 +35,11 @@ instance Foldable InorderTraversal where
         Leaf1 -> mempty
         Node1 l x r -> go l <> f x <> go r
 
-todoImpl ''Traversable ''InorderTraversal
+instance Traversable InorderTraversal where
+  traverse f = \(InorderTraversal t) -> InorderTraversal <$> go t where
+    go = \case
+      Leaf1 -> pure Leaf1
+      Node1 a x b -> Node1 <$> go a <*> f x <*> go b
 
 -- Красивая печать дерева для примеров в GHCi.
 deriving stock instance Generic (Tree1 a)
@@ -80,8 +84,9 @@ parseBinOp = Plus <$ token "+" <|> Minus <$ token "-" <|> Mult <$ token "*"
 -- runMyParser parsePolish (tokenize "+ + 1") == Nothing
 
 parsePolish :: MyParser Expr
-parsePolish = todo "parsePolish"
-
+parsePolish =
+  BinOp <$> parseBinOp <*> parsePolish <*> parsePolish
+  <|> parseConst
 
 -- 2.3. Цепочка операций.
 -- Соберите AST из первого выражения и пар (оператор, правый операнд).
@@ -90,8 +95,9 @@ parsePolish = todo "parsePolish"
 --   == BinOp Minus (BinOp Minus (Const 8) (Const 3)) (Const 1)
 
 assembleChain :: Expr -> [(BinOp, Expr)] -> Expr
-assembleChain = todo "assembleChain"
-
+assembleChain l = \case
+  (op, r):rs -> assembleChain (BinOp op l r) rs
+  [] -> l
 
 -- 2.4. Явные скобки.
 -- Через комбинаторы напишите inParens p: прочитать "(", p, ")" и вернуть результат p.
@@ -104,7 +110,16 @@ assembleChain = todo "assembleChain"
 -- На "1 + 2" результат Just (["+", "2"], Const 1), на "(1 +)" -- Nothing.
 
 inParens :: MyParser a -> MyParser a
-inParens = todo "inParens"
+inParens p = token "(" *> p <* token ")"
 
 parseParensExpr :: MyParser Expr
-parseParensExpr = todo "parseParensExpr"
+parseParensExpr =
+  parseConst
+  <|> parseVar
+  <|> inParens (
+    parseParensExpr
+    <**> (
+      (\op r l -> BinOp op l r) <$> parseBinOp <*> parseParensExpr
+      <|> pure id
+    )
+  )
